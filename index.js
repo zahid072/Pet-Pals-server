@@ -34,12 +34,27 @@ async function run() {
     const usersCollection = client.db("PetPalsDb").collection("allUsers");
 
     // all apis
+
+    // get apis
+    app.get("/users", async (req, res) => {
+      const result = await usersCollection.find().toArray();
+      res.send(result);
+    });
+
+    app.get("/user", async (req, res) => {
+      const email = req.query.email;
+      const filter = { email: email };
+      const result = await usersCollection.findOne(filter);
+      res.send(result);
+    });
+
+    // post apis
     app.post("/users", async (req, res) => {
       const user = req.body;
-      const filter = {email: user.email}
-      const existUser = await usersCollection.findOne(filter)
-      if(existUser){
-        return res.send({message: "User already exist."})
+      const filter = { email: user.email };
+      const existUser = await usersCollection.findOne(filter);
+      if (existUser) {
+        return res.send({ message: "User already exist." });
       }
       const result = await usersCollection.insertOne(user);
       res.send(result);
