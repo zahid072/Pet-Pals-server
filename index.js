@@ -14,7 +14,7 @@ app.get("/", (req, res) => {
 
 // mongodb
 
-const { MongoClient, ServerApiVersion } = require("mongodb");
+const { MongoClient, ServerApiVersion, ObjectId } = require("mongodb");
 const uri = `mongodb+srv://${process.env.DB_USER}:${process.env.DB_PASS}@cluster0.pvtbyiu.mongodb.net/?retryWrites=true&w=majority&appName=Cluster0`;
 
 // Create a MongoClient with a MongoClientOptions object to set the Stable API version
@@ -53,7 +53,7 @@ async function run() {
       const page = parseInt(req.query.page) || 1;
       const limit = parseInt(req.query.limit) || 10;
       const skip = (page - 1) * limit;
-    
+
       try {
         const result = await petsCollection
           .find()
@@ -61,15 +61,15 @@ async function run() {
           .skip(skip)
           .limit(limit)
           .toArray();
-          
+
         const totalCount = await petsCollection.countDocuments();
-    
+
         res.send({
           pets: result,
           petsCount: totalCount,
         });
       } catch (error) {
-        res.status(500).send({ error: 'Failed to fetch pets' });
+        res.status(500).send({ error: "Failed to fetch pets" });
       }
     });
     app.get("/pets/search", async (req, res) => {
@@ -77,11 +77,15 @@ async function run() {
       try {
         let result;
         if (name) {
-          result = await petsCollection.find({ petName: new RegExp(name, "i") })
+          result = await petsCollection
+            .find({ petName: new RegExp(name, "i") })
             .sort({ timestamp: -1 })
             .toArray();
         } else {
-          result = await petsCollection.find().sort({ timestamp: -1 }).toArray();
+          result = await petsCollection
+            .find()
+            .sort({ timestamp: -1 })
+            .toArray();
         }
         res.send(result);
       } catch (error) {
@@ -102,6 +106,53 @@ async function run() {
     app.post("/pets", async (req, res) => {
       const newPet = req.body;
       const result = await petsCollection.insertOne(newPet);
+      res.send(result);
+    });
+
+    // -----------------------------update api-----------------------------
+
+    app.patch("/pets/status/:id", async (req, res) => {
+      const { id } = req.params;
+      const filter = { _id: new ObjectId(id) };
+      const updatedValue = req.body;
+      const updatedDoc = {
+        $set: {
+          adopted: updatedValue.adopted,
+        },
+      };
+      const result = await petsCollection.updateOne(filter, updatedDoc);
+      res.send(result);
+    });
+    app.patch("/pets/:id", async (req, res) => {
+      const { id } = req.params;
+      const filter = { _id: new ObjectId(id) };
+      const updatedValue = req.body;
+      const updatedDoc = {
+        $set: {
+          petName: updatedValue.petName,
+          image: updatedValue.image,
+          petAge: updatedValue.petAge,
+          petCategory: updatedValue.petCategory,
+          location: updatedValue.location,
+          shortDescription: updatedValue.shortDescription,
+          longDescription: updatedValue.longDescription,
+          timestamp: updatedValue.timestamp,
+          adopted: false,
+          email: updatedValue.email,
+        },
+      };
+      const result = await petsCollection.updateOne(filter, updatedDoc);
+      res.send(result);
+    });
+
+    // -----------------------------update api-----------------------------
+
+    // -----------------------------delete api-----------------------------
+
+    app.delete("/pets/:id", async (req, res) => {
+      const { id } = req.params;
+      const filter = { _id: new ObjectId(id) };
+      const result = await petsCollection.deleteOne(filter);
       res.send(result);
     });
 
