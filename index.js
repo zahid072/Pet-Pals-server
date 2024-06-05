@@ -32,6 +32,7 @@ async function run() {
     await client.connect();
 
     const usersCollection = client.db("PetPalsDb").collection("allUsers");
+    const petsCollection = client.db("PetPalsDb").collection("allPets");
 
     // all apis
 
@@ -48,6 +49,13 @@ async function run() {
       res.send(result);
     });
 
+    app.get("/pets", async (req, res) => {
+      const result = await petsCollection
+        .find()
+        .sort({ timestamp: -1 })
+        .toArray();
+      res.send(result);
+    });
     // post apis
     app.post("/users", async (req, res) => {
       const user = req.body;
@@ -57,6 +65,11 @@ async function run() {
         return res.send({ message: "User already exist." });
       }
       const result = await usersCollection.insertOne(user);
+      res.send(result);
+    });
+    app.post("/pets", async (req, res) => {
+      const newPet = req.body;
+      const result = await petsCollection.insertOne(newPet);
       res.send(result);
     });
 
