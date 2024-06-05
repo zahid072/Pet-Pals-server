@@ -72,8 +72,34 @@ async function run() {
         res.status(500).send({ error: "Failed to fetch pets" });
       }
     });
+    app.get("/pets/listing", async (req, res) => {
+      const page = parseInt(req.query.page) || 1;
+      const limit = parseInt(req.query.limit) || 10;
+      const skip = (page - 1) * limit;
+
+      try {
+        const result = await petsCollection
+          .find()
+          .sort({ timestamp: -1 })
+          .skip(skip)
+          .limit(limit)
+          .toArray();
+
+        const totalCount = await petsCollection.countDocuments();
+
+        res.send({
+          pets: result,
+          petsCount: totalCount,
+        });
+      } catch (error) {
+        res.status(500).send({ error: "Failed to fetch pets" });
+      }
+    });
     app.get("/pets/search", async (req, res) => {
-      const { name } = req.query;
+      const name = req.query.name;
+      const category = req.query.category;
+      console.log(category);
+      const filter = {petCategory: new RegExp(category, "i")}
       try {
         let result;
         if (name) {
@@ -81,9 +107,9 @@ async function run() {
             .find({ petName: new RegExp(name, "i") })
             .sort({ timestamp: -1 })
             .toArray();
-        } else {
+        } else if (category) {
           result = await petsCollection
-            .find()
+            .find(filter)
             .sort({ timestamp: -1 })
             .toArray();
         }
