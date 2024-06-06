@@ -33,6 +33,9 @@ async function run() {
 
     const usersCollection = client.db("PetPalsDb").collection("allUsers");
     const petsCollection = client.db("PetPalsDb").collection("allPets");
+    const adoptionRequestCollection = client
+      .db("PetPalsDb")
+      .collection("adoptionRequest");
 
     // all apis
 
@@ -48,7 +51,7 @@ async function run() {
       const result = await usersCollection.findOne(filter);
       res.send(result);
     });
-
+    // get all pets for admin Dashboard
     app.get("/pets", async (req, res) => {
       const page = parseInt(req.query.page) || 1;
       const limit = parseInt(req.query.limit) || 10;
@@ -72,6 +75,7 @@ async function run() {
         res.status(500).send({ error: "Failed to fetch pets" });
       }
     });
+    // get all pet by descending order and infinite scroll
     app.get("/pets/listing", async (req, res) => {
       const page = parseInt(req.query.page) || 1;
       const limit = parseInt(req.query.limit) || 10;
@@ -95,11 +99,62 @@ async function run() {
         res.status(500).send({ error: "Failed to fetch pets" });
       }
     });
+    // get user added pet
+    app.get("/pets/userAdded/:email", async (req, res) => {
+      const page = parseInt(req.query.page) || 1;
+      const limit = parseInt(req.query.limit) || 10;
+      const skip = (page - 1) * limit;
+      const { email } = req.params;
+
+      try {
+        const result = await petsCollection
+          .find({ email: email })
+          .sort({ timestamp: -1 })
+          .skip(skip)
+          .limit(limit)
+          .toArray();
+
+        const totalCount = await petsCollection.countDocuments();
+
+        res.send({
+          pets: result,
+          petsCount: totalCount,
+        });
+      } catch (error) {
+        res.status(500).send({ error: "Failed to fetch pets" });
+      }
+    });
+    // get pets with category
+    app.get("/pets/category/:petName", async (req, res) => {
+      const { petName } = req.params;
+      try {
+        const result = await petsCollection
+          .find({ petCategory: new RegExp(petName, "i") })
+          .sort({ timestamp: -1 })
+          .toArray();
+
+        res.send(result);
+      } catch (error) {
+        res.status(500).send({ error: "Failed to fetch pets" });
+      }
+    });
+    // get single pet with id
+    app.get("/pets/details/:id", async (req, res) => {
+      const { id } = req.params;
+      try {
+        const result = await petsCollection.findOne({ _id: new ObjectId(id) });
+
+        res.send(result);
+      } catch (error) {
+        res.status(500).send({ error: "Failed to fetch pets" });
+      }
+    });
+    // get search pets with name and category
     app.get("/pets/search", async (req, res) => {
       const name = req.query.name;
       const category = req.query.category;
       console.log(category);
-      const filter = {petCategory: new RegExp(category, "i")}
+      const filter = { petCategory: new RegExp(category, "i") };
       try {
         let result;
         if (name) {
@@ -135,6 +190,20 @@ async function run() {
       res.send(result);
     });
 
+    // adoption request api
+
+    app.post("/adoptionRequest", async (req, res) => {
+      const newRequest = req.body;
+      const result = await adoptionRequestCollection.insertOne(newRequest);
+      res.send(result);
+    });
+    app.get("/adoptionRequest", async (req, res) => {
+      const { email } = req.query;
+      const filter = { ownerEmail: email };
+      const result = await adoptionRequestCollection.find(filter).toArray();
+      res.send(result);
+    });
+ 
     // -----------------------------update api-----------------------------
 
     app.patch("/pets/status/:id", async (req, res) => {
@@ -147,6 +216,18 @@ async function run() {
         },
       };
       const result = await petsCollection.updateOne(filter, updatedDoc);
+      res.send(result);
+    });
+    app.patch("/adoptionRequest/status/:id", async (req, res) => {
+      const { id } = req.params;
+      const filter = { _id: new ObjectId(id) };
+      const updatedValue = req.body;
+      const updatedDoc = {
+        $set: {
+          status: updatedValue.status,
+        },
+      };
+      const result = await adoptionRequestCollection.updateOne(filter, updatedDoc);
       res.send(result);
     });
     app.patch("/pets/:id", async (req, res) => {
@@ -175,6 +256,12 @@ async function run() {
 
     // -----------------------------delete api-----------------------------
 
+    app.delete("/adoptionRequest/:id", async (req, res) => {
+      const { id } = req.params;
+      const filter = { _id: new ObjectId(id) };
+      const result = await adoptionRequestCollection.deleteOne(filter);
+      res.send(result);
+    });
     app.delete("/pets/:id", async (req, res) => {
       const { id } = req.params;
       const filter = { _id: new ObjectId(id) };
