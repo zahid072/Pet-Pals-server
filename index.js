@@ -2,6 +2,7 @@ const express = require("express");
 const cors = require("cors");
 const app = express();
 require("dotenv").config();
+const jwt = require("jsonwebtoken");
 const port = process.env.PORT || 5000;
 
 // middleware
@@ -37,19 +38,60 @@ async function run() {
       .db("PetPalsDb")
       .collection("adoptionRequest");
 
-    // all apis
+    // --------------------------jwt related apis-------------------------
+    app.post("/jwt", (req, res) => {
+      const user = req.body;
+      const token = jwt.sign(user, process.env.ACCESS_TOKEN_SECRET, {
+        expiresIn: "1h",
+      });
+      res.send({ token });
+    });
 
-    // get apis
-    app.get("/users", async (req, res) => {
+    // middle ware
+    const verifyToken = (req, res, next) => {
+      if (!req.headers.authorization) {
+        return res.status(401).send({ message: "unauthorized access" });
+      }
+      const token = req.headers.authorization.split(" ")[1];
+      jwt.verify(token, process.env.ACCESS_TOKEN_SECRET, (err, decoded) => {
+        if (err) {
+          return res.status(401).send({ message: "unauthorized access" });
+        }
+        req.decoded = decoded;
+        next();
+      });
+    };
+    // use verify admin after verifyToken
+    const verifyAdmin = async (req, res, next) => {
+      const email = req.decoded.email;
+      const query = { email: email };
+      const user = await usersCollection.findOne(query);
+      const isAdmin = user?.role === "admin";
+      if (!isAdmin) {
+        return res.status(403).send({ message: "forbidden access" });
+      }
+      next();
+    };
+    // -------------------------------------all apis------------------------------------
+    // ---------------get apis-------------------
+    app.get("/users", verifyToken, verifyAdmin, async (req, res) => {
       const result = await usersCollection.find().toArray();
       res.send(result);
     });
 
-    app.get("/user", async (req, res) => {
+    app.get("/user/admin", verifyToken, async (req, res) => {
       const email = req.query.email;
+
+      if (email !== req.decoded.email) {
+        return res.status(403).send({ message: "forbidden access" });
+      }
       const filter = { email: email };
-      const result = await usersCollection.findOne(filter);
-      res.send(result);
+      const user = await usersCollection.findOne(filter);
+      let admin = false;
+      if (user) {
+        admin = user?.role === "admin";
+      }
+      res.send({ admin });
     });
     // get all pets for admin Dashboard
     app.get("/pets", async (req, res) => {
@@ -75,7 +117,7 @@ async function run() {
         res.status(500).send({ error: "Failed to fetch pets" });
       }
     });
-    // get all pet by descending order and infinite scroll
+    // ------------get all pet by descending order and infinite scroll-----------------
     app.get("/pets/listing", async (req, res) => {
       const page = parseInt(req.query.page) || 1;
       const limit = parseInt(req.query.limit) || 10;
@@ -99,7 +141,7 @@ async function run() {
         res.status(500).send({ error: "Failed to fetch pets" });
       }
     });
-    // get user added pet
+    //--------------- get user added pet-----------------------
     app.get("/pets/userAdded/:email", async (req, res) => {
       const page = parseInt(req.query.page) || 1;
       const limit = parseInt(req.query.limit) || 10;
@@ -124,7 +166,7 @@ async function run() {
         res.status(500).send({ error: "Failed to fetch pets" });
       }
     });
-    // get pets with category
+    // ----------------------------get pets with category--------------------------
     app.get("/pets/category/:petName", async (req, res) => {
       const { petName } = req.params;
       try {
@@ -138,7 +180,7 @@ async function run() {
         res.status(500).send({ error: "Failed to fetch pets" });
       }
     });
-    // get single pet with id
+    // -------------------get single pet with id-------------------------------
     app.get("/pets/details/:id", async (req, res) => {
       const { id } = req.params;
       try {
@@ -149,7 +191,7 @@ async function run() {
         res.status(500).send({ error: "Failed to fetch pets" });
       }
     });
-    // get search pets with name and category
+    // ------------------get search pets with name and category------------------------
     app.get("/pets/search", async (req, res) => {
       const name = req.query.name;
       const category = req.query.category;
@@ -173,7 +215,7 @@ async function run() {
         res.status(500).send({ message: "Error fetching pets", error });
       }
     });
-    // post apis
+    // ----------------------post apis-------------------------
     app.post("/users", async (req, res) => {
       const user = req.body;
       const filter = { email: user.email };
@@ -190,7 +232,7 @@ async function run() {
       res.send(result);
     });
 
-    // adoption request api
+    // --------------------adoption request api-----------------------
 
     app.post("/adoptionRequest", async (req, res) => {
       const newRequest = req.body;
@@ -203,7 +245,7 @@ async function run() {
       const result = await adoptionRequestCollection.find(filter).toArray();
       res.send(result);
     });
- 
+
     // -----------------------------update api-----------------------------
 
     app.patch("/pets/status/:id", async (req, res) => {
@@ -227,7 +269,10 @@ async function run() {
           status: updatedValue.status,
         },
       };
-      const result = await adoptionRequestCollection.updateOne(filter, updatedDoc);
+      const result = await adoptionRequestCollection.updateOne(
+        filter,
+        updatedDoc
+      );
       res.send(result);
     });
     app.patch("/pets/:id", async (req, res) => {
@@ -252,7 +297,20 @@ async function run() {
       res.send(result);
     });
 
-    // -----------------------------update api-----------------------------
+    app.patch("/users/:id", async (req, res) => {
+      const { id } = req.params;
+      const filter = { _id: new ObjectId(id) };
+      const updatedValue = req.body;
+      const updatedDoc = {
+        $set: {
+          role: updatedValue.role,
+        },
+      };
+      const result = await usersCollection.updateOne(filter, updatedDoc);
+      res.send(result);
+    });
+
+    // -----------------------------update api end-----------------------------
 
     // -----------------------------delete api-----------------------------
 
@@ -266,6 +324,12 @@ async function run() {
       const { id } = req.params;
       const filter = { _id: new ObjectId(id) };
       const result = await petsCollection.deleteOne(filter);
+      res.send(result);
+    });
+    app.delete("/users/:id", async (req, res) => {
+      const { id } = req.params;
+      const filter = { _id: new ObjectId(id) };
+      const result = await usersCollection.deleteOne(filter);
       res.send(result);
     });
 
