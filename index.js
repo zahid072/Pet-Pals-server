@@ -1,12 +1,17 @@
 const express = require("express");
 const cors = require("cors");
 const app = express();
-require("dotenv").config();
 const jwt = require("jsonwebtoken");
+require("dotenv").config();
+const stripe = require("stripe")(process.env.STRIPE_SECRET_KEY);
 const port = process.env.PORT || 5000;
-
+  
 // middleware
-app.use(cors());
+app.use(
+  cors({
+    origin: ["http://localhost:5173", "http://localhost:5174"],
+  })
+);
 app.use(express.json());
 
 app.get("/", (req, res) => {
@@ -34,6 +39,9 @@ async function run() {
 
     const usersCollection = client.db("PetPalsDb").collection("allUsers");
     const petsCollection = client.db("PetPalsDb").collection("allPets");
+    const campaignCollection = client
+      .db("PetPalsDb")
+      .collection("donationCampaign");
     const adoptionRequestCollection = client
       .db("PetPalsDb")
       .collection("adoptionRequest");
@@ -73,6 +81,26 @@ async function run() {
       next();
     };
     // -------------------------------------all apis------------------------------------
+
+     // ----------Payment apis-------------- 
+     app.post("/create-payment-intent", async (req, res) => {
+      const { price } = req.body;
+      const amount = parseInt(price * 100); 
+
+       if(amount > 0 ){
+        const paymentIntent = await stripe.paymentIntents.create({
+          amount: amount,
+          currency: "usd",
+  
+          payment_method_types: ["card"],
+        });
+  
+        res.send({
+          clientSecret: paymentIntent.client_secret,
+        });
+       }
+    });
+
     // ---------------get apis-------------------
     app.get("/users", verifyToken, verifyAdmin, async (req, res) => {
       const result = await usersCollection.find().toArray();
@@ -215,6 +243,46 @@ async function run() {
         res.status(500).send({ message: "Error fetching pets", error });
       }
     });
+
+    // ---------------get campaign data----------------------
+    app.get("/donationCampaign/user", verifyToken, async (req, res) => {
+      const { email } = req.query;
+      const filter = { email: email };
+      const result = await campaignCollection
+        .find(filter)
+        .sort({ timestamp: -1 })
+        .toArray();
+      res.send(result);
+    });
+    app.get("/donationCampaign/:id", verifyToken, async (req, res) => {
+      const { id } = req.params;
+      const filter = { _id: new ObjectId(id) };
+      const result = await campaignCollection.findOne(filter);
+      res.send(result);
+    });
+    app.get("/donationCampaign", async (req, res) => {
+      const page = parseInt(req.query.page) || 1;
+      const limit = parseInt(req.query.limit) || 10;
+      const skip = (page - 1) * limit;
+
+      try {
+        const result = await campaignCollection
+          .find()
+          .sort({ timestamp: -1 })
+          .skip(skip)
+          .limit(limit)
+          .toArray();
+
+        const totalCount = await campaignCollection.countDocuments();
+
+        res.send({
+          campaigns: result,
+          campaignCount: totalCount,
+        });
+      } catch (error) {
+        res.status(500).send({ error: "Failed to fetch campaign" });
+      }
+    });
     // ----------------------post apis-------------------------
     app.post("/users", async (req, res) => {
       const user = req.body;
@@ -229,6 +297,11 @@ async function run() {
     app.post("/pets", async (req, res) => {
       const newPet = req.body;
       const result = await petsCollection.insertOne(newPet);
+      res.send(result);
+    });
+    app.post("/donationCampaign", verifyToken, async (req, res) => {
+      const newCampaign = req.body;
+      const result = await campaignCollection.insertOne(newCampaign);
       res.send(result);
     });
 
