@@ -5,7 +5,7 @@ const jwt = require("jsonwebtoken");
 require("dotenv").config();
 const stripe = require("stripe")(process.env.STRIPE_SECRET_KEY);
 const port = process.env.PORT || 5000;
-  
+
 // middleware
 app.use(
   cors({
@@ -35,10 +35,13 @@ const client = new MongoClient(uri, {
 async function run() {
   try {
     // Connect the client to the server	(optional starting in v4.7)
-    await client.connect();
+    // await client.connect();
 
     const usersCollection = client.db("PetPalsDb").collection("allUsers");
     const petsCollection = client.db("PetPalsDb").collection("allPets");
+    const donationHistoryCollection = client
+      .db("PetPalsDb")
+      .collection("donationHistory");
     const campaignCollection = client
       .db("PetPalsDb")
       .collection("donationCampaign");
@@ -82,23 +85,23 @@ async function run() {
     };
     // -------------------------------------all apis------------------------------------
 
-     // ----------Payment apis-------------- 
-     app.post("/create-payment-intent", async (req, res) => {
+    // ----------Payment apis--------------
+    app.post("/create-payment-intent", async (req, res) => {
       const { price } = req.body;
-      const amount = parseInt(price * 100); 
+      const amount = parseInt(price * 100);
 
-       if(amount > 0 ){
+      if (amount > 0) {
         const paymentIntent = await stripe.paymentIntents.create({
           amount: amount,
           currency: "usd",
-  
+
           payment_method_types: ["card"],
         });
-  
+
         res.send({
           clientSecret: paymentIntent.client_secret,
         });
-       }
+      }
     });
 
     // ---------------get apis-------------------
@@ -245,7 +248,7 @@ async function run() {
     });
 
     // ---------------get campaign data----------------------
-    app.get("/donationCampaign/user", verifyToken, async (req, res) => {
+    app.get("/donationCampaign/user", async (req, res) => {
       const { email } = req.query;
       const filter = { email: email };
       const result = await campaignCollection
@@ -254,7 +257,7 @@ async function run() {
         .toArray();
       res.send(result);
     });
-    app.get("/donationCampaign/:id", verifyToken, async (req, res) => {
+    app.get("/donationCampaign/:id", async (req, res) => {
       const { id } = req.params;
       const filter = { _id: new ObjectId(id) };
       const result = await campaignCollection.findOne(filter);
@@ -283,6 +286,31 @@ async function run() {
         res.status(500).send({ error: "Failed to fetch campaign" });
       }
     });
+
+    app.get(
+      "/donationCampaign/history/:email",
+      async (req, res) => {
+        const { email } = req.params;
+        const query = { ownerEmail: email };
+        const result = await donationHistoryCollection
+          .find(query)
+          .sort({ timestamp: -1 })
+          .toArray();
+        res.send(result);
+      }
+    );
+    app.get(
+      "/donationCampaign/myDonation/:email",
+      async (req, res) => {
+        const { email } = req.params;
+        const query = { user: email };
+        const result = await donationHistoryCollection
+          .find(query)
+          .sort({ timestamp: -1 })
+          .toArray();
+        res.send(result);
+      }
+    );
     // ----------------------post apis-------------------------
     app.post("/users", async (req, res) => {
       const user = req.body;
@@ -299,9 +327,14 @@ async function run() {
       const result = await petsCollection.insertOne(newPet);
       res.send(result);
     });
-    app.post("/donationCampaign", verifyToken, async (req, res) => {
+    app.post("/donationCampaign", async (req, res) => {
       const newCampaign = req.body;
       const result = await campaignCollection.insertOne(newCampaign);
+      res.send(result);
+    });
+    app.post("/donationCampaign/history", async (req, res) => {
+      const newDonation = req.body;
+      const result = await donationHistoryCollection.insertOne(newDonation);
       res.send(result);
     });
 
@@ -320,6 +353,71 @@ async function run() {
     });
 
     // -----------------------------update api-----------------------------
+
+    // campaign data update
+    app.patch("/donationCampaign/donate/:id",  async (req, res) => {
+      const { id } = req.params;
+      const filter = { _id: new ObjectId(id) };
+      const updatedValue = req.body;
+      const updatedDoc = {
+        $set: {
+          maxAmount: updatedValue.maxAmount,
+        },
+      };
+      const result = await campaignCollection.updateOne(filter, updatedDoc);
+      res.send(result);
+    });
+    app.patch("/donationCampaign/refund/:id",  async (req, res) => {
+      const { id } = req.params;
+      const filter = { _id: new ObjectId(id) };
+      const campaign = await campaignCollection.findOne(filter)
+      const updatedValue = req.body;
+      if(campaign?.maxAmount>=updatedValue?.amount){
+        const updatedDoc = {
+          $set: {
+            maxAmount: campaign?.maxAmount - updatedValue.amount,
+          },
+        };
+        const result = await campaignCollection.updateOne(filter, updatedDoc);
+        res.send(result);
+      }else{
+        res.send({message:"Refund failed."})
+      }
+      
+    });
+    app.patch("/donationCampaign/update/:id", async (req, res) => {
+      const { id } = req.params;
+      const filter = { _id: new ObjectId(id) };
+      const updatedValue = req.body;
+      const updatedDoc = {
+        $set: {
+          petName: updatedValue.petName,
+          image: updatedValue.image,
+          lastDate: updatedValue.lastDate,
+          maxAmount: updatedValue?.maxAmount,
+          shortDescription: updatedValue.shortDescription,
+          longDescription: updatedValue.longDescription,
+          timestamp: updatedValue?.timestamp,
+          email: updatedValue?.email,
+          userCanDonate: updatedValue.userCanDonate,
+          pauseStatus: updatedValue?.pauseStatus,
+        },
+      };
+      const result = await campaignCollection.updateOne(filter, updatedDoc);
+      res.send(result);
+    });
+    app.patch("/donationCampaign/pause/:id", async (req, res) => {
+      const { id } = req.params;
+      const filter = { _id: new ObjectId(id) };
+      const updatedValue = req.body;
+      const updatedDoc = {
+        $set: {
+          pauseStatus: updatedValue?.pauseStatus,
+        },
+      };
+      const result = await campaignCollection.updateOne(filter, updatedDoc);
+      res.send(result);
+    });
 
     app.patch("/pets/status/:id", async (req, res) => {
       const { id } = req.params;
@@ -405,9 +503,24 @@ async function run() {
       const result = await usersCollection.deleteOne(filter);
       res.send(result);
     });
+    app.delete("/donationCampaign/:id", async (req, res) => {
+      const { id } = req.params;
+      const filter = { _id: new ObjectId(id) };
+      const result = await campaignCollection.deleteOne(filter);
+      res.send(result);
+    });
+    app.delete(
+      "/donationCampaign/history/:id",
+      async (req, res) => {
+        const { id } = req.params;
+        const query = { _id: new ObjectId(id) };
+        const result = await donationHistoryCollection.deleteOne(query)
+        res.send(result);
+      }
+    );
 
     // Send a ping to confirm a successful connection
-    await client.db("admin").command({ ping: 1 });
+    // await client.db("admin").command({ ping: 1 });
     console.log(
       "Pinged your deployment. You successfully connected to MongoDB!"
     );
