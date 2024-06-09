@@ -9,7 +9,12 @@ const port = process.env.PORT || 5000;
 // middleware
 app.use(
   cors({
-    origin: ["http://localhost:5173", "http://localhost:5174"],
+    origin: [
+      "http://localhost:5173",
+      "https://a12-pet-pals.netlify.app",
+      "https://petpals-89872.firebaseapp.com",
+      "https://petpals-89872.web.app",
+    ],
   })
 );
 app.use(express.json());
@@ -156,7 +161,7 @@ async function run() {
 
       try {
         const result = await petsCollection
-          .find()
+          .find({ adopted: false })
           .sort({ timestamp: -1 })
           .skip(skip)
           .limit(limit)
@@ -172,6 +177,7 @@ async function run() {
         res.status(500).send({ error: "Failed to fetch pets" });
       }
     });
+
     //--------------- get user added pet-----------------------
     app.get("/pets/userAdded/:email", async (req, res) => {
       const page = parseInt(req.query.page) || 1;
@@ -226,7 +232,6 @@ async function run() {
     app.get("/pets/search", async (req, res) => {
       const name = req.query.name;
       const category = req.query.category;
-      console.log(category);
       const filter = { petCategory: new RegExp(category, "i") };
       try {
         let result;
@@ -263,6 +268,12 @@ async function run() {
       const result = await campaignCollection.findOne(filter);
       res.send(result);
     });
+    app.get("/donate/random", async (req, res) => {
+      const { id } = req.query;
+      const filter = { _id: { $ne: new ObjectId(id) } };
+      const result = await campaignCollection.find(filter).toArray();
+      res.send(result);
+    });
     app.get("/donationCampaign", async (req, res) => {
       const page = parseInt(req.query.page) || 1;
       const limit = parseInt(req.query.limit) || 10;
@@ -287,30 +298,24 @@ async function run() {
       }
     });
 
-    app.get(
-      "/donationCampaign/history/:email",
-      async (req, res) => {
-        const { email } = req.params;
-        const query = { ownerEmail: email };
-        const result = await donationHistoryCollection
-          .find(query)
-          .sort({ timestamp: -1 })
-          .toArray();
-        res.send(result);
-      }
-    );
-    app.get(
-      "/donationCampaign/myDonation/:email",
-      async (req, res) => {
-        const { email } = req.params;
-        const query = { user: email };
-        const result = await donationHistoryCollection
-          .find(query)
-          .sort({ timestamp: -1 })
-          .toArray();
-        res.send(result);
-      }
-    );
+    app.get("/donationCampaign/history/:email", async (req, res) => {
+      const { email } = req.params;
+      const query = { ownerEmail: email };
+      const result = await donationHistoryCollection
+        .find(query)
+        .sort({ timestamp: -1 })
+        .toArray();
+      res.send(result);
+    });
+    app.get("/donationCampaign/myDonation/:email", async (req, res) => {
+      const { email } = req.params;
+      const query = { user: email };
+      const result = await donationHistoryCollection
+        .find(query)
+        .sort({ timestamp: -1 })
+        .toArray();
+      res.send(result);
+    });
     // ----------------------post apis-------------------------
     app.post("/users", async (req, res) => {
       const user = req.body;
@@ -355,7 +360,7 @@ async function run() {
     // -----------------------------update api-----------------------------
 
     // campaign data update
-    app.patch("/donationCampaign/donate/:id",  async (req, res) => {
+    app.patch("/donationCampaign/donate/:id", async (req, res) => {
       const { id } = req.params;
       const filter = { _id: new ObjectId(id) };
       const updatedValue = req.body;
@@ -367,12 +372,12 @@ async function run() {
       const result = await campaignCollection.updateOne(filter, updatedDoc);
       res.send(result);
     });
-    app.patch("/donationCampaign/refund/:id",  async (req, res) => {
+    app.patch("/donationCampaign/refund/:id", async (req, res) => {
       const { id } = req.params;
       const filter = { _id: new ObjectId(id) };
-      const campaign = await campaignCollection.findOne(filter)
+      const campaign = await campaignCollection.findOne(filter);
       const updatedValue = req.body;
-      if(campaign?.maxAmount>=updatedValue?.amount){
+      if (campaign?.maxAmount >= updatedValue?.amount) {
         const updatedDoc = {
           $set: {
             maxAmount: campaign?.maxAmount - updatedValue.amount,
@@ -380,10 +385,9 @@ async function run() {
         };
         const result = await campaignCollection.updateOne(filter, updatedDoc);
         res.send(result);
-      }else{
-        res.send({message:"Refund failed."})
+      } else {
+        res.send({ message: "Refund failed." });
       }
-      
     });
     app.patch("/donationCampaign/update/:id", async (req, res) => {
       const { id } = req.params;
@@ -509,15 +513,12 @@ async function run() {
       const result = await campaignCollection.deleteOne(filter);
       res.send(result);
     });
-    app.delete(
-      "/donationCampaign/history/:id",
-      async (req, res) => {
-        const { id } = req.params;
-        const query = { _id: new ObjectId(id) };
-        const result = await donationHistoryCollection.deleteOne(query)
-        res.send(result);
-      }
-    );
+    app.delete("/donationCampaign/history/:id", async (req, res) => {
+      const { id } = req.params;
+      const query = { _id: new ObjectId(id) };
+      const result = await donationHistoryCollection.deleteOne(query);
+      res.send(result);
+    });
 
     // Send a ping to confirm a successful connection
     // await client.db("admin").command({ ping: 1 });
