@@ -65,6 +65,7 @@ async function run() {
 
     // middle ware
     const verifyToken = (req, res, next) => {
+      console.log("auth token", req.headers.authorization);
       if (!req.headers.authorization) {
         return res.status(401).send({ message: "unauthorized access" });
       }
@@ -82,7 +83,7 @@ async function run() {
       const email = req.decoded.email;
       const query = { email: email };
       const user = await usersCollection.findOne(query);
-      const isAdmin = user?.role === "admin";
+      const isAdmin = user?.role === "admin" ? true : false;
       if (!isAdmin) {
         return res.status(403).send({ message: "forbidden access" });
       }
@@ -130,7 +131,7 @@ async function run() {
       res.send({ admin });
     });
     // get all pets for admin Dashboard
-    app.get("/pets", async (req, res) => {
+    app.get("/pets", verifyToken, verifyAdmin, async (req, res) => {
       const page = parseInt(req.query.page) || 1;
       const limit = parseInt(req.query.limit) || 10;
       const skip = (page - 1) * limit;
@@ -179,7 +180,7 @@ async function run() {
     });
 
     //--------------- get user added pet-----------------------
-    app.get("/pets/userAdded/:email", async (req, res) => {
+    app.get("/pets/userAdded/:email", verifyToken, async (req, res) => {
       const page = parseInt(req.query.page) || 1;
       const limit = parseInt(req.query.limit) || 10;
       const skip = (page - 1) * limit;
@@ -253,7 +254,7 @@ async function run() {
     });
 
     // ---------------get campaign data----------------------
-    app.get("/donationCampaign/user", async (req, res) => {
+    app.get("/donationCampaign/user", verifyToken, async (req, res) => {
       const { email } = req.query;
       const filter = { email: email };
       const result = await campaignCollection
@@ -298,24 +299,32 @@ async function run() {
       }
     });
 
-    app.get("/donationCampaign/history/:email", async (req, res) => {
-      const { email } = req.params;
-      const query = { ownerEmail: email };
-      const result = await donationHistoryCollection
-        .find(query)
-        .sort({ timestamp: -1 })
-        .toArray();
-      res.send(result);
-    });
-    app.get("/donationCampaign/myDonation/:email", async (req, res) => {
-      const { email } = req.params;
-      const query = { user: email };
-      const result = await donationHistoryCollection
-        .find(query)
-        .sort({ timestamp: -1 })
-        .toArray();
-      res.send(result);
-    });
+    app.get(
+      "/donationCampaign/history/:email",
+      verifyToken,
+      async (req, res) => {
+        const { email } = req.params;
+        const query = { ownerEmail: email };
+        const result = await donationHistoryCollection
+          .find(query)
+          .sort({ timestamp: -1 })
+          .toArray();
+        res.send(result);
+      }
+    );
+    app.get(
+      "/donationCampaign/myDonation/:email",
+      verifyToken,
+      async (req, res) => {
+        const { email } = req.params;
+        const query = { user: email };
+        const result = await donationHistoryCollection
+          .find(query)
+          .sort({ timestamp: -1 })
+          .toArray();
+        res.send(result);
+      }
+    );
     // ----------------------post apis-------------------------
     app.post("/users", async (req, res) => {
       const user = req.body;
@@ -337,7 +346,7 @@ async function run() {
       const result = await campaignCollection.insertOne(newCampaign);
       res.send(result);
     });
-    app.post("/donationCampaign/history", async (req, res) => {
+    app.post("/donationCampaign/history", verifyToken, async (req, res) => {
       const newDonation = req.body;
       const result = await donationHistoryCollection.insertOne(newDonation);
       res.send(result);
@@ -360,7 +369,7 @@ async function run() {
     // -----------------------------update api-----------------------------
 
     // campaign data update
-    app.patch("/donationCampaign/donate/:id", async (req, res) => {
+    app.patch("/donationCampaign/donate/:id", verifyToken, async (req, res) => {
       const { id } = req.params;
       const filter = { _id: new ObjectId(id) };
       const updatedValue = req.body;
@@ -372,7 +381,7 @@ async function run() {
       const result = await campaignCollection.updateOne(filter, updatedDoc);
       res.send(result);
     });
-    app.patch("/donationCampaign/refund/:id", async (req, res) => {
+    app.patch("/donationCampaign/refund/:id", verifyToken, async (req, res) => {
       const { id } = req.params;
       const filter = { _id: new ObjectId(id) };
       const campaign = await campaignCollection.findOne(filter);
@@ -389,7 +398,7 @@ async function run() {
         res.send({ message: "Refund failed." });
       }
     });
-    app.patch("/donationCampaign/update/:id", async (req, res) => {
+    app.patch("/donationCampaign/update/:id", verifyToken, async (req, res) => {
       const { id } = req.params;
       const filter = { _id: new ObjectId(id) };
       const updatedValue = req.body;
@@ -410,7 +419,7 @@ async function run() {
       const result = await campaignCollection.updateOne(filter, updatedDoc);
       res.send(result);
     });
-    app.patch("/donationCampaign/pause/:id", async (req, res) => {
+    app.patch("/donationCampaign/pause/:id", verifyToken, async (req, res) => {
       const { id } = req.params;
       const filter = { _id: new ObjectId(id) };
       const updatedValue = req.body;
@@ -423,7 +432,7 @@ async function run() {
       res.send(result);
     });
 
-    app.patch("/pets/status/:id", async (req, res) => {
+    app.patch("/pets/status/:id", verifyToken, async (req, res) => {
       const { id } = req.params;
       const filter = { _id: new ObjectId(id) };
       const updatedValue = req.body;
@@ -472,7 +481,7 @@ async function run() {
       res.send(result);
     });
 
-    app.patch("/users/:id", async (req, res) => {
+    app.patch("/users/:id", verifyToken, verifyAdmin, async (req, res) => {
       const { id } = req.params;
       const filter = { _id: new ObjectId(id) };
       const updatedValue = req.body;
